@@ -1,0 +1,7 @@
+{
+  "name": "Shate Bhai CMC",
+  "description": "Mobile-first business app for Shate Bhai CMC Meat Shop, featuring product browsing, cart management, admin dashboard, and order tracking.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
