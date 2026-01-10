@@ -6,7 +6,7 @@ import {
   LogOut, Plus, Search, ChevronRight, Phone, MapPin, 
   CheckCircle2, AlertTriangle, Trash2, Edit3, Save, Share2,
   X, Printer, MessageSquare, Crosshair,
-  Navigation, TrendingUp, Camera
+  Navigation, TrendingUp, Camera, Download, Users
 } from 'lucide-react';
 import { 
   UserRole, Product, CartItem, Order, AppSettings, 
@@ -33,6 +33,35 @@ const fileToBase64 = (file: File): Promise<string> => {
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = error => reject(error);
   });
+};
+
+const downloadCustomerCSV = (orders: Order[]) => {
+  const customersMap = new Map();
+  orders.forEach(o => {
+    const key = o.customerEmail || o.phone;
+    if (!customersMap.has(key)) {
+      customersMap.set(key, {
+        name: o.customerName,
+        email: o.customerEmail,
+        phone: o.phone,
+        address: o.address.replace(/(\r\n|\n|\r|,)/gm, " ") // Clean up address for CSV
+      });
+    }
+  });
+
+  const headers = "Name,Email,Phone,Address\n";
+  const rows = Array.from(customersMap.values())
+    .map(c => `"${c.name}","${c.email}","${c.phone}","${c.address}"`)
+    .join("\n");
+
+  const csvContent = "data:text/csv;charset=utf-8," + headers + rows;
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `customers_database_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
 
 // --- Shared Components ---
@@ -134,32 +163,27 @@ const Modal = ({ title, children, onClose }: { title: string; children?: React.R
 
 // --- Pages ---
 
-// 1. LOGIN PAGE (Phone/Email Toggle and OTP flow)
+// 1. LOGIN PAGE (Direct Sign In, No OTP)
 const LoginPage = ({ adminEmails, logo, onLogin }: { adminEmails: string; logo: string; onLogin: (role: UserRole, email: string) => void }) => {
   const [loginMethod, setLoginMethod] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
-  const [otpValue, setOtpValue] = useState('');
-  const [step, setStep] = useState<'input' | 'otp'>('input');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue) return;
 
-    if (loginMethod === 'phone' && step === 'input') {
-      setIsLoading(true);
-      setTimeout(() => {
-        setStep('otp');
-        setIsLoading(false);
-      }, 1000);
-      return;
-    }
+    setIsLoading(true);
     
-    const adminsList = adminEmails.split(',').map(e => e.trim().toLowerCase());
-    const finalValue = inputValue.trim().toLowerCase();
-    
-    const role = adminsList.includes(finalValue) ? UserRole.ADMIN : UserRole.CUSTOMER;
-    onLogin(role, finalValue);
+    // Simulate a brief loading state for better UX
+    setTimeout(() => {
+      const adminsList = adminEmails.split(',').map(e => e.trim().toLowerCase());
+      const finalValue = inputValue.trim().toLowerCase();
+      
+      const role = adminsList.includes(finalValue) ? UserRole.ADMIN : UserRole.CUSTOMER;
+      onLogin(role, finalValue);
+      setIsLoading(false);
+    }, 600);
   };
 
   return (
@@ -174,13 +198,13 @@ const LoginPage = ({ adminEmails, logo, onLogin }: { adminEmails: string; logo: 
 
       <div className="flex bg-gray-100 p-1 rounded-2xl mb-8">
         <button 
-          onClick={() => { setLoginMethod('email'); setStep('input'); setInputValue(''); }}
+          onClick={() => { setLoginMethod('email'); setInputValue(''); }}
           className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${loginMethod === 'email' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-400'}`}
         >
           Email
         </button>
         <button 
-          onClick={() => { setLoginMethod('phone'); setStep('input'); setInputValue(''); }}
+          onClick={() => { setLoginMethod('phone'); setInputValue(''); }}
           className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${loginMethod === 'phone' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-400'}`}
         >
           Phone
@@ -188,58 +212,32 @@ const LoginPage = ({ adminEmails, logo, onLogin }: { adminEmails: string; logo: 
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        {step === 'input' ? (
-          <div>
-            <label className="text-xs font-black text-gray-400 uppercase tracking-widest block mb-2 px-1">
-              {loginMethod === 'email' ? 'Email Address' : 'Phone Number'}
-            </label>
-            <div className="relative">
-              {loginMethod === 'phone' && (
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">+91</span>
-              )}
-              <input 
-                type={loginMethod === 'email' ? "email" : "tel"}
-                placeholder={loginMethod === 'email' ? "your@email.com" : "98765 43210"}
-                className={`w-full bg-gray-50 border-0 rounded-2xl p-4 focus:ring-2 focus:ring-red-600 outline-none transition-all font-bold text-gray-900 shadow-sm ${loginMethod === 'phone' ? 'pl-14' : ''}`}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                required
-              />
-            </div>
-            <Button 
-              fullWidth 
-              type="submit" 
-              className="py-4 shadow-lg shadow-red-50 mt-6 text-lg"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Sending...' : (loginMethod === 'email' ? 'Sign In' : 'Get OTP')}
-            </Button>
-          </div>
-        ) : (
-          <div className="animate-in zoom-in-95 duration-200">
-            <div className="flex items-center gap-2 mb-4">
-              <button type="button" onClick={() => setStep('input')} className="p-2 hover:bg-gray-100 rounded-full text-gray-400">
-                <ChevronRight className="rotate-180" size={20} />
-              </button>
-              <div>
-                <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Verification Code</p>
-                <p className="text-sm font-bold text-gray-900">Code sent to +91 {inputValue}</p>
-              </div>
-            </div>
+        <div>
+          <label className="text-xs font-black text-gray-400 uppercase tracking-widest block mb-2 px-1">
+            {loginMethod === 'email' ? 'Email Address' : 'Phone Number'}
+          </label>
+          <div className="relative">
+            {loginMethod === 'phone' && (
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">+91</span>
+            )}
             <input 
-              type="number"
-              placeholder="0 0 0 0"
-              className="w-full bg-gray-50 border-0 rounded-2xl p-4 focus:ring-2 focus:ring-red-600 outline-none transition-all font-black text-center text-2xl tracking-[1em] text-gray-900 shadow-sm mb-6"
-              maxLength={4}
-              value={otpValue}
-              onChange={(e) => setOtpValue(e.target.value)}
+              type={loginMethod === 'email' ? "email" : "tel"}
+              placeholder={loginMethod === 'email' ? "your@email.com" : "98765 43210"}
+              className={`w-full bg-gray-50 border-0 rounded-2xl p-4 focus:ring-2 focus:ring-red-600 outline-none transition-all font-bold text-gray-900 shadow-sm ${loginMethod === 'phone' ? 'pl-14' : ''}`}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
               required
             />
-            <Button fullWidth type="submit" className="py-4 shadow-lg shadow-red-50 text-lg">
-              Verify & Login
-            </Button>
           </div>
-        )}
+          <Button 
+            fullWidth 
+            type="submit" 
+            className="py-4 shadow-lg shadow-red-50 mt-6 text-lg"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Signing In...' : 'Sign In'}
+          </Button>
+        </div>
 
         <div className="mt-auto pt-20 text-center border-t border-gray-50">
           <p className="text-xs text-gray-400 font-black uppercase tracking-widest mb-2 px-1">Customer Support</p>
@@ -433,7 +431,6 @@ const CheckoutPage = ({ cart, settings, onPlaceOrder, onBack, onLogout }: { cart
 
   return (
     <div className="px-0 pb-24 animate-in slide-in-from-right duration-300">
-      {/* Fix: use the 'onLogout' prop instead of the undefined 'handleLogout' */}
       <Header title="Delivery Details" showBack onBack={onBack} onLogout={onLogout} />
       <div className="px-6 py-6">
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -864,7 +861,18 @@ export default function App() {
 const AdminDashboard = ({ orders }: { orders: Order[] }) => {
   const totalSales = orders.reduce((sum, o) => sum + (o.total || 0), 0);
   const pendingCount = orders.filter(o => o.status === OrderStatus.PENDING).length;
-  const stats = [ { label: "Gross Sales", value: formatCurrency(totalSales), icon: TrendingUp, color: 'bg-green-600' }, { label: "Queue", value: pendingCount, icon: AlertTriangle, color: 'bg-orange-600' } ];
+  
+  // Extract unique customers
+  const customersMap = new Map();
+  orders.forEach(o => customersMap.set(o.customerEmail || o.phone, o.customerName));
+  const uniqueCustomerCount = customersMap.size;
+
+  const stats = [ 
+    { label: "Gross Sales", value: formatCurrency(totalSales), icon: TrendingUp, color: 'bg-green-600' }, 
+    { label: "Pending", value: pendingCount, icon: AlertTriangle, color: 'bg-orange-600' },
+    { label: "Customers", value: uniqueCustomerCount, icon: Users, color: 'bg-blue-600' }
+  ];
+
   return (
     <div className="px-6 py-6 space-y-8 animate-in fade-in duration-500">
       <h2 className="text-3xl font-black text-gray-900 tracking-tight">App Statistics</h2>
@@ -876,6 +884,21 @@ const AdminDashboard = ({ orders }: { orders: Order[] }) => {
             <p className="text-xl font-black text-gray-900 mt-1">{stat.value}</p>
           </div>
         ))}
+        <button 
+          onClick={() => downloadCustomerCSV(orders)}
+          className="col-span-2 bg-gray-900 text-white p-6 rounded-[32px] flex items-center justify-between shadow-2xl hover:bg-black transition-all active:scale-95 group"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center group-hover:bg-red-600 transition-colors">
+              <Download size={24} />
+            </div>
+            <div className="text-left">
+              <p className="text-xs font-black uppercase tracking-widest opacity-60">Database Export</p>
+              <p className="text-lg font-black">Download Customers</p>
+            </div>
+          </div>
+          <ChevronRight size={24} className="opacity-40" />
+        </button>
       </div>
       <div className="bg-white p-8 rounded-[40px] border border-gray-100 h-60 w-full shadow-2xl">
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-8">Sales Velocity (Weekly)</p>
